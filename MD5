@@ -1,12 +1,12 @@
-aebc4be6f27da34b30e44622ed0a0982 *DESCRIPTION
-95af77d3607ca8b73db23707ac8e1a1e *NAMESPACE
+d44f7b70e8980f6ab46223e537428279 *DESCRIPTION
+70b2d1ba95c619019f372f593fea7ff8 *NAMESPACE
 83dd990bf26a3cf2fbe6566af9012a5f *R/checkingBMC.R
-2c94bcf5b6170f0c3b935010859aec5a *R/checkingTRC.R
+d3ac09fae1977c04af568ee9c56f300c *R/checkingTRC.R
 74acd8281cec7a2f29ca64e91a3525a7 *R/helloWorld.R
 a2d5c3608b2c8152ce98834a6ae32b55 *R/locUZ.R
 9678e8a2ba374f59acceb893386ab3c3 *R/plotData.R
 3b3f2927fc93e52942302a41a472ad8a *R/postMCMC.R
-a9aabd07c8306957310ae2d7f7315b76 *R/runMCMC.R
+80ce994d4dc4152dafd9ca90c79bb7f7 *R/runMCMC.R
 85f5c22d62353407ad5e154a6e961d5e *R/simData.R
 e649f4f0d1a18ac985b378d21c516307 *data/Dbase_n100N5000.RData
 063bd537265589bf72c2296d6deb11a0 *data/Earthquake.RData
@@ -17,7 +17,8 @@ afa15ef80d7f073a3dfc2b3efd83eaff *data/TexasCounty_center.RData
 163e1e155a8648c33652c804d6194c53 *data/TexasCounty_population.RData
 6cf71cd4bfa1e68db1c64c6b63dfdcbd *data/Weed.RData
 fd9df6de13b114b01712349bc26317b0 *data/datalist
-1295f25dd72b93400e97bafec3110030 *inst/doc/geoCount_HowtoUse.R
+66cf891f443ad3e06f7c07c7c380637b *inst/CITATION
+6054e56359b74f695ab43ddd500d8a2d *inst/doc/geoCount_HowtoUse.R
 3c86c8b3d478823a93f7ec7ef0b712dd *inst/doc/geoCount_HowtoUse.pdf
 4f0ebe29f34a4d15916d0656f50f5fa8 *man/BMCT.Rd
 87046d8bf69dc4e000ffea99a9bfd627 *man/Earthquakes.Rd

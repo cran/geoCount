@@ -195,203 +195,215 @@ runMCMC.sf <- function(Y, L=0, loc, X=NULL,
     initials = list(c(1), 1.5, 0.2, 1), 
     MCMCinput=NULL, partial = FALSE, famT=1,
     n.chn = 2, n.cores = getOption("cores"), cluster.type="SOCK") {
-      
-if(!is.null(MCMCinput)){
-  run <- MCMCinput$run; run.S <- MCMCinput$run.S
-  rho.family <- MCMCinput$rho.family
-  Y.family <- MCMCinput$Y.family
-  priorSigma <- MCMCinput$priorSigma
-  parSigma <- MCMCinput$parSigma
-  ifkappa <- MCMCinput$ifkappa
-  scales <- MCMCinput$scales; 
-  phi.bound <- MCMCinput$phi.bound
-  initials <- MCMCinput$initials
-}
-## set different starting points    
-s.ini <- 0.1*c( mean(initials[[1]]), initials[[2]], initials[[3]], initials[[4]])
-ini <- lapply( 1:n.chn, function(tt)
-          list( initials[[1]]+s.ini[1]*rnorm(length(initials[[1]])), 
-            abs(initials[[2]]+s.ini[2]*rnorm(1)), 
-            abs(initials[[3]]+s.ini[3]*rnorm(1)),
-            ifelse(ifkappa==0, initials[[4]],
-                  abs(initials[[4]]+s.ini[4]*rnorm(1)) )
-            )
-          )
-## MCMC
-sfInit(parallel=TRUE, cpus= n.cores, type=cluster.type)
-sfExportAll( except=NULL, debug=FALSE )
-sfLibrary("geoCount", character.only= TRUE)
-sfClusterSetupRNG()
-  message("### multiChain Starts!\n")
+  
+  
+  if(!is.null(MCMCinput)){
+    run <- MCMCinput$run; run.S <- MCMCinput$run.S
+    rho.family <- MCMCinput$rho.family
+    Y.family <- MCMCinput$Y.family
+    priorSigma <- MCMCinput$priorSigma
+    parSigma <- MCMCinput$parSigma
+    ifkappa <- MCMCinput$ifkappa
+    scales <- MCMCinput$scales; 
+    phi.bound <- MCMCinput$phi.bound
+    initials <- MCMCinput$initials
+  }
+  ## set different starting points    
+  s.ini <- 0.1*c( mean(initials[[1]]), initials[[2]], initials[[3]], initials[[4]])
+  ini <- lapply( 1:n.chn, function(tt)
+    list( initials[[1]]+s.ini[1]*rnorm(length(initials[[1]])), 
+          abs(initials[[2]]+s.ini[2]*rnorm(1)), 
+          abs(initials[[3]]+s.ini[3]*rnorm(1)),
+          ifelse(ifkappa==0, initials[[4]],
+                 abs(initials[[4]]+s.ini[4]*rnorm(1)) )
+    )
+  )
+  ## MCMC
+  res.prl <- NULL
   t0 <- proc.time()
-  res.prl <- sfLapply(1:n.chn, function(t) 
-              runMCMC(Y, L, loc, X, run, run.S, rho.family, Y.family, 
-                      priorSigma, parSigma,
-                      ifkappa, scales, phi.bound, ini[[t]], MCMCinput=NULL,
-                      partial, famT)
-              )
+  if (requireNamespace("snowfall", quietly = TRUE)) {    
+    snowfall::sfInit(parallel=TRUE, cpus= n.cores, type=cluster.type)
+    snowfall::sfExportAll( except=NULL, debug=FALSE )
+    snowfall::sfLibrary("geoCount", character.only= TRUE)
+    snowfall::sfClusterSetupRNG()
+    message("### multiChain Starts!\n")    
+    res.prl <- snowfall::sfLapply(1:n.chn, function(t) 
+      runMCMC(Y, L, loc, X, run, run.S, rho.family, Y.family, 
+              priorSigma, parSigma,
+              ifkappa, scales, phi.bound, ini[[t]], MCMCinput=NULL,
+              partial, famT)
+    )    
+    message("### multiChain Done!\n")
+    snowfall::sfStop()
+  } else{
+    stop("Please install and load {snowfall} first before using this function!")
+  }
+  
   run.time <- proc.time() - t0
-  message("### multiChain Done!\n")
-sfStop()
-
   message("### multiChain Running Time: ")
   print(run.time)
   message("### MCMC Acceptance Rate: ")
   print(sapply(res.prl, function(tt) tt$Acc))
-
+  
   res.prl
 }
 
 ####################################
 #### Prediction at new locations
 ####################################
-predY <- function(res.m, loc, locp, X=NULL, Xp=NULL, Lp=0, k=1, rho.family="rhoPowerExp", Y.family="Poisson", parallel=NULL, n.cores = getOption("cores"), cluster.type="SOCK"){
-
-t0 <- proc.time()
-
-n <- nrow(loc); np <- nrow(locp); ns <- ncol(res.m$S)
-Sp.post <- Yp <- matrix(0,np,ns)
-
+predY <- function(res.m, loc, locp, X=NULL, Xp=NULL, Lp=0, k=1, 
+                  rho.family="rhoPowerExp", Y.family="Poisson", 
+                  parallel=NULL, n.cores = getOption("cores"), cluster.type="SOCK"){
+  t0 <- proc.time()
+  
+  n <- nrow(loc); np <- nrow(locp); ns <- ncol(res.m$S)
+  Sp.post <- Yp <- matrix(0,np,ns)
+  
   if(any(Lp==0)){
     Lp <- matrix(rep(1,np),,1)
     message("\nLp contains zero and Lp is set to 1 for all locations.")
-    } else { Lp <- matrix(Lp,,1)}
-    
-Uxx <- loc2U(loc)
-Uyy <- loc2U(locp)
-Uyx <- locUloc(loc, locp)
-Dx <- cbind( rep(1, n), X )
-Dy <- cbind( rep(1, np), Xp )
-
-if( !is.null(res.m$k) ){
-  k.post <- res.m$k
+  } else { Lp <- matrix(Lp,,1)}
+  
+  Uxx <- loc2U(loc)
+  Uyy <- loc2U(locp)
+  Uyx <- locUloc(loc, locp)
+  Dx <- cbind( rep(1, n), X )
+  Dy <- cbind( rep(1, np), Xp )
+  
+  if( !is.null(res.m$k) ){
+    k.post <- res.m$k
   } else  k.post <- rep(k, ns) 
-
-
+  
+  
   message("### Prediction Starts!\n")
-
-if(is.null(parallel)){
-  res.prl <- lapply(1:ns, function(i){  
-x <-res.m$S[,i]; 
-s <- res.m$s[i]; a <- res.m$a[i]; k <- k.post[i]
-if(is.matrix(res.m$m)){
-  m <- res.m$m[,i]
-  } else m <- res.m$m[i]
-
-mu.x <- Dx%*%m; mu.y <- Dy%*%m
-
-  if(rho.family=="rhoPowerExp"){
-      Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
-      Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
-      Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
-    } else if(rho.family=="rhoMatern"){
+  
+  if(is.null(parallel)){
+    res.prl <- lapply(1:ns, function(i){  
+      x <-res.m$S[,i]; 
+      s <- res.m$s[i]; a <- res.m$a[i]; k <- k.post[i]
+      if(is.matrix(res.m$m)){
+        m <- res.m$m[,i]
+      } else m <- res.m$m[i]
+      
+      mu.x <- Dx%*%m; mu.y <- Dy%*%m
+      
+      if(rho.family=="rhoPowerExp"){
+        Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
+        Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
+        Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
+      } else if(rho.family=="rhoMatern"){
         Z.xx <- s^2* rhoMatern(Uxx, a, k)
         Z.yy <- s^2* rhoMatern(Uyy, a, k)
         Z.yx <- s^2* rhoMatern(Uyx, a, k)
       } else {
-          stop(paste("rho.family=", rho.family, " is not appropriate!", sep=""))
-        }
-E <- mu.y + Z.yx%*%solve(Z.xx)%*%(x-mu.x)
-V <- Z.yy - Z.yx%*%solve(Z.xx)%*%t(Z.yx)
-z <- rnorm(np)
-y <- E + chol(V)%*%z
-Sp.post[,i] <- y; 
-if(Y.family=="Poisson"){
-  Yp[,i] <- rpois(np, Lp*exp(y))
-  } else if(Y.family=="Binomial"){
-          Yp[,i] <- rbinom(np, Lp, exp(y)/(1+exp(y)))
-          }
-c(Sp.post[,i], Yp[,i])
-} 
-  ) # end of lapply()
-# } else if(parallel=="multicore"){
-#   res.prl <- mclapply(1:ns, function(i){  
-# x <-res.m$S[,i]; 
-# s <- res.m$s[i]; a <- res.m$a[i]; k <- k.post[i]
-# if(is.matrix(res.m$m)){
-#   m <- res.m$m[,i]
-#   } else m <- res.m$m[i]
-# 
-# mu.x <- Dx%*%m; mu.y <- Dy%*%m
-# 
-#   if(rho.family=="rhoPowerExp"){
-#       Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
-#       Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
-#       Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
-#     } else if(rho.family=="rhoMatern"){
-#         Z.xx <- s^2* rhoMatern(Uxx, a, k)
-#         Z.yy <- s^2* rhoMatern(Uyy, a, k)
-#         Z.yx <- s^2* rhoMatern(Uyx, a, k)
-#       } else {
-#           cat("Notice: rho.family=", rho.family, " doesn't exist! rho.family=rhoPowerExp will be used.\n", sep="")
-#                 Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
-#                 Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
-#                 Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
-#         }
-# E <- mu.y + Z.yx%*%solve(Z.xx)%*%(x-mu.x)
-# V <- Z.yy - Z.yx%*%solve(Z.xx)%*%t(Z.yx)
-# z <- rnorm(np)
-# y <- E + chol(V)%*%z
-# Sp.post[,i] <- y; 
-# if(Y.family=="Poisson"){
-#   Yp[,i] <- rpois(np, Lp*exp(y))
-#   } else if(Y.family=="Binomial"){
-#           Yp[,i] <- rbinom(np, Lp, exp(y)/(1+exp(y)))
-#           }
-# c(Sp.post[,i], Yp[,i])
-# }, mc.cores = n.cores
-#   ) # end of mclapply()
-} else if(TRUE){
-sfInit(parallel=TRUE, cpus= n.cores, type=cluster.type)
-sfExportAll( except=NULL, debug=FALSE )
-sfLibrary("geoCount", character.only= TRUE)
-sfClusterSetupRNG()
-  res.prl <- sfLapply(1:ns, function(i){  
-x <-res.m$S[,i]; 
-s <- res.m$s[i]; a <- res.m$a[i]; k <- k.post[i]
-if(is.matrix(res.m$m)){
-  m <- res.m$m[,i]
-  } else m <- res.m$m[i]
-
-mu.x <- Dx%*%m; mu.y <- Dy%*%m
-
-  if(rho.family=="rhoPowerExp"){
-      Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
-      Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
-      Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
-    } else if(rho.family=="rhoMatern"){
+        stop(paste("rho.family=", rho.family, " is not appropriate!", sep=""))
+      }
+      E <- mu.y + Z.yx%*%solve(Z.xx)%*%(x-mu.x)
+      V <- Z.yy - Z.yx%*%solve(Z.xx)%*%t(Z.yx)
+      z <- rnorm(np)
+      y <- E + chol(V)%*%z
+      Sp.post[,i] <- y; 
+      if(Y.family=="Poisson"){
+        Yp[,i] <- rpois(np, Lp*exp(y))
+      } else if(Y.family=="Binomial"){
+        Yp[,i] <- rbinom(np, Lp, exp(y)/(1+exp(y)))
+      }
+      c(Sp.post[,i], Yp[,i])
+    } 
+    ) # end of lapply()
+    # } else if(parallel=="multicore"){
+    #   res.prl <- mclapply(1:ns, function(i){  
+    # x <-res.m$S[,i]; 
+    # s <- res.m$s[i]; a <- res.m$a[i]; k <- k.post[i]
+    # if(is.matrix(res.m$m)){
+    #   m <- res.m$m[,i]
+    #   } else m <- res.m$m[i]
+    # 
+    # mu.x <- Dx%*%m; mu.y <- Dy%*%m
+    # 
+    #   if(rho.family=="rhoPowerExp"){
+    #       Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
+    #       Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
+    #       Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
+    #     } else if(rho.family=="rhoMatern"){
+    #         Z.xx <- s^2* rhoMatern(Uxx, a, k)
+    #         Z.yy <- s^2* rhoMatern(Uyy, a, k)
+    #         Z.yx <- s^2* rhoMatern(Uyx, a, k)
+    #       } else {
+    #           cat("Notice: rho.family=", rho.family, " doesn't exist! rho.family=rhoPowerExp will be used.\n", sep="")
+    #                 Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
+    #                 Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
+    #                 Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
+    #         }
+    # E <- mu.y + Z.yx%*%solve(Z.xx)%*%(x-mu.x)
+    # V <- Z.yy - Z.yx%*%solve(Z.xx)%*%t(Z.yx)
+    # z <- rnorm(np)
+    # y <- E + chol(V)%*%z
+    # Sp.post[,i] <- y; 
+    # if(Y.family=="Poisson"){
+    #   Yp[,i] <- rpois(np, Lp*exp(y))
+    #   } else if(Y.family=="Binomial"){
+    #           Yp[,i] <- rbinom(np, Lp, exp(y)/(1+exp(y)))
+    #           }
+    # c(Sp.post[,i], Yp[,i])
+    # }, mc.cores = n.cores
+    #   ) # end of mclapply()
+  } else if (requireNamespace("snowfall", quietly = TRUE)) {
+    
+    snowfall::sfInit(parallel=TRUE, cpus= n.cores, type=cluster.type)
+    snowfall::sfExportAll( except=NULL, debug=FALSE )
+    snowfall::sfLibrary("geoCount", character.only= TRUE)
+    snowfall::sfClusterSetupRNG()
+    res.prl <- snowfall::sfLapply(1:ns, function(i){  
+      x <-res.m$S[,i]; 
+      s <- res.m$s[i]; a <- res.m$a[i]; k <- k.post[i]
+      if(is.matrix(res.m$m)){
+        m <- res.m$m[,i]
+      } else m <- res.m$m[i]
+      
+      mu.x <- Dx%*%m; mu.y <- Dy%*%m
+      
+      if(rho.family=="rhoPowerExp"){
+        Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
+        Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
+        Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
+      } else if(rho.family=="rhoMatern"){
         Z.xx <- s^2* rhoMatern(Uxx, a, k)
         Z.yy <- s^2* rhoMatern(Uyy, a, k)
         Z.yx <- s^2* rhoMatern(Uyx, a, k)
       } else {
-          cat("Notice: rho.family=", rho.family, " doesn't exist! rho.family=rhoPowerExp will be used.\n", sep="")
-                Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
-                Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
-                Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
-        }
-E <- mu.y + Z.yx%*%solve(Z.xx)%*%(x-mu.x)
-V <- Z.yy - Z.yx%*%solve(Z.xx)%*%t(Z.yx)
-z <- rnorm(np)
-y <- E + chol(V)%*%z
-Sp.post[,i] <- y; 
-if(Y.family=="Poisson"){
-  Yp[,i] <- rpois(np, Lp*exp(y))
-  } else if(Y.family=="Binomial"){
-          Yp[,i] <- rbinom(np, Lp, exp(y)/(1+exp(y)))
-          }
-c(Sp.post[,i], Yp[,i])
-}
-              ) # end of sfLapply()
-sfStop()
-}
+        cat("Notice: rho.family=", rho.family, " doesn't exist! rho.family=rhoPowerExp will be used.\n", sep="")
+        Z.xx <- s^2* rhoPowerExp(Uxx, a, k)
+        Z.yy <- s^2* rhoPowerExp(Uyy, a, k)
+        Z.yx <- s^2* rhoPowerExp(Uyx, a, k)
+      }
+      E <- mu.y + Z.yx%*%solve(Z.xx)%*%(x-mu.x)
+      V <- Z.yy - Z.yx%*%solve(Z.xx)%*%t(Z.yx)
+      z <- rnorm(np)
+      y <- E + chol(V)%*%z
+      Sp.post[,i] <- y; 
+      if(Y.family=="Poisson"){
+        Yp[,i] <- rpois(np, Lp*exp(y))
+      } else if(Y.family=="Binomial"){
+        Yp[,i] <- rbinom(np, Lp, exp(y)/(1+exp(y)))
+      }
+      c(Sp.post[,i], Yp[,i])
+    }
+    ) # end of sfLapply()
+    snowfall::sfStop()    
+    
+  } else{
+    stop("Please install and load {snowfall} first before using this function!")
+  }
 
-run.time <- proc.time() - t0
+  
+  run.time <- proc.time() - t0
   message("### Prediction Done!\n")
   message("### Prediction Running Time: ")
   print(run.time)
-res <- matrix(unlist(res.prl),,ns)
-list(latent.predict=res[1:np,], Y.predict=res[(np+1):(2*np),])
-
+  res <- matrix(unlist(res.prl),,ns)
+  list(latent.predict=res[1:np,], Y.predict=res[(np+1):(2*np),])
+  
 }
 #################
 #### END
